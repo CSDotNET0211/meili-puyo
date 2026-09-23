@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <meta
+      name="description"
+      content="ネイティブRust SIMDバックエンドでぷよぷよの連鎖を検証する盤面ラボ"
+    />
+    <title>Puyo SIMD Lab</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+          <div>
+            <p class="eyebrow">Native chain workbench</p>
+            <h1>Puyo SIMD Lab</h1>
+          </div>
+        </div>
+        <div class="engine-status" id="engine-status" aria-live="polite">
+          <span class="status-dot"></span>
+          <span id="engine-label">バックエンドに接続中</span>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <section class="tool-panel" aria-labelledby="editor-heading">
+          <div class="section-heading">
+            <div>
+              <p class="section-index">01 / INPUT</p>
+              <h2 id="editor-heading">盤面を組む</h2>
+            </div>
+            <button class="icon-button" id="clear-button" type="button">全消去</button>
+          </div>
+
+          <div class="palette" role="toolbar" aria-label="描画するぷよを選択">
+            <button class="palette-button is-selected" data-cell="R" type="button">
+              <span class="puyo red"></span><kbd>1</kbd><span>赤</span>
+            </button>
+            <button class="palette-button" data-cell="G" type="button">
+              <span class="puyo green"></span><kbd>2</kbd><span>緑</span>
+            </button>
+            <button class="palette-button" data-cell="B" type="button">
+              <span class="puyo blue"></span><kbd>3</kbd><span>青</span>
+            </button>
+            <button class="palette-button" data-cell="Y" type="button">
+              <span class="puyo yellow"></span><kbd>4</kbd><span>黄</span>
+            </button>
+            <button class="palette-button" data-cell="O" type="button">
+              <span class="puyo garbage"></span><kbd>5</kbd><span>おじゃま</span>
+            </button>
+            <button class="palette-button" data-cell="." type="button">
+              <span class="eraser" aria-hidden="true">×</span><kbd>0</kbd><span>消す</span>
+            </button>
+          </div>
+
+          <div class="editor-area">
+            <div class="row-labels" id="row-labels" aria-hidden="true"></div>
+            <div>
+              <div class="board-grid" id="board-grid" role="grid" aria-label="13段6列の盤面"></div>
+              <div class="column-labels" aria-hidden="true">
+                <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span>
+              </div>
+            </div>
+          </div>
+
+          <p class="editor-help">ドラッグで連続入力・右クリックで消去。13段目は非表示行として消去判定から除外されます。</p>
+
+          <div class="editor-actions">
+            <button class="secondary-button" id="gravity-button" type="button">重力で整列</button>
+            <button class="primary-button" id="simulate-button" type="button">
+              <span>SIMDで連鎖実行</span><span aria-hidden="true">→</span>
+            </button>
+          </div>
+
+          <div class="game-inspector" aria-labelledby="game-heading">
+            <div class="game-inspector-header">
+              <div>
+                <p class="section-index">ALPHAZERO STATE</p>
+                <h3 id="game-heading">合法手と Next を確認</h3>
+              </div>
+              <label>Seed <input id="game-seed" type="number" min="0" max="4294967295" value="0" /></label>
+            </div>
+            <div class="piece-window" id="piece-window" aria-live="polite"></div>
+            <div class="game-action-row">
+              <button class="secondary-button" id="inspect-game" type="button">状態を読む</button>
+              <button class="secondary-button" id="search-game" type="button">PUCT 800回</button>
+              <select id="legal-action" aria-label="合法手" disabled><option>合法手を取得してください</option></select>
+              <button class="primary-button" id="play-action" type="button" disabled>この手を置く</button>
+            </div>
+            <p class="game-meta" id="game-meta">公開情報だけを表示します。未来のツモ列は返しません。</p>
+          </div>
+
+          <div class="samples">
+            <p>サンプル盤面</p>
+            <div>
+              <button type="button" data-sample="single">1連鎖</button>
+              <button type="button" data-sample="double">2連鎖</button>
+              <button type="button" data-sample="garbage">おじゃま</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="result-panel" aria-labelledby="result-heading">
+          <div class="section-heading result-heading">
+            <div>
+              <p class="section-index">02 / OUTPUT</p>
+              <h2 id="result-heading">連鎖を読む</h2>
+            </div>
+            <span class="latency" id="latency">待機中</span>
+          </div>
+
+          <div class="metrics" aria-live="polite">
+            <article class="metric metric-primary">
+              <span>CHAIN</span><strong id="metric-chains">—</strong><small>連鎖</small>
+            </article>
+            <article class="metric">
+              <span>SCORE</span><strong id="metric-score">—</strong><small>点</small>
+            </article>
+            <article class="metric">
+              <span>ERASED</span><strong id="metric-erased">—</strong><small>色ぷよ</small>
+            </article>
+            <article class="metric">
+              <span>DROP</span><strong id="metric-drop">—</strong><small>最大段</small>
+            </article>
+          </div>
+
+          <div class="timeline-card">
+            <div class="timeline-header">
+              <div>
+                <span class="timeline-kicker">CHAIN TIMELINE</span>
+                <strong id="frame-title">実行すると各連鎖を再生できます</strong>
+              </div>
+              <div class="playback-controls">
+                <button id="previous-frame" type="button" aria-label="前のフレーム" disabled>←</button>
+                <button id="play-frames" type="button" aria-label="連鎖を再生" disabled>再生</button>
+                <button id="next-frame" type="button" aria-label="次のフレーム" disabled>→</button>
+              </div>
+            </div>
+            <input id="frame-slider" type="range" min="0" max="0" value="0" disabled aria-label="連鎖フレーム" />
+            <div class="timeline-track" id="timeline-track"></div>
+          </div>
+
+          <div class="detail-grid">
+            <article>
+              <span>この手の得点</span><strong id="step-score">—</strong>
+            </article>
+            <article>
+              <span>同時色数</span><strong id="step-colors">—</strong>
+            </article>
+            <article>
+              <span>おじゃま消去</span><strong id="step-garbage">—</strong>
+            </article>
+            <article>
+              <span>連結ボーナス</span><strong id="step-bonus">—</strong>
+            </article>
+          </div>
+
+          <div class="notice" id="notice" role="status">
+            <span aria-hidden="true">i</span>
+            <p>左の盤面を編集して「SIMDで連鎖実行」を押してください。</p>
+          </div>
+        </section>
+      </main>
+
+      <footer>
+        <span>Rust native backend</span>
+        <span>SSE2 vanish detection</span>
+        <span>BMI2 PEXT gravity</span>
+      </footer>
+    </div>
+  </body>
+</html>

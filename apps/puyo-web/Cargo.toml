@@ -1,0 +1,18 @@
+[package]
+name = "puyo-web"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Web GUI for the Puyo Puyo simulator and AI"
+
+[dependencies]
+puyo-core = { path = "../../crates/puyo-core" }
+puyo-ai = { path = "../../crates/puyo-ai" }
+axum = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal"] }
+
+[dev-dependencies]
+http-body-util = "0.1"
+tower = { version = "0.5", features = ["util"] }
